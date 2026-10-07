@@ -4066,6 +4066,7 @@
       this.ultimateButton.name = "UltimateButton";
       this.ultimateLabel.name = "UltimateLabel";
       this.joystickBase.name = "JoystickBase";
+      this.joystickKnob.name = "JoystickKnob";
       this.root.addChild(this.worldLayer);
       this.root.addChild(this.juiceLayer);
       this.root.addChild(this.threatLayer);
@@ -5057,6 +5058,7 @@
       this.joystickBase.pos(24, WORLD.designHeight - 205);
       this.joystickBase.size(176, 176);
       this.joystickBase.mouseThrough = false;
+      this.joystickBase.mouseEnabled = true;
       const g = this.joystickBase.graphics;
       g.drawCircle(88, 88, 75, "#10281d", "#6fa66a", 3);
       g.drawCircle(88, 88, 59, "#294a34", "#8cc883", 2);
@@ -5071,6 +5073,7 @@
       kg.drawCircle(0, 0, 29, "#e8f0d2", "#5f8658", 3);
       kg.drawCircle(-7, -8, 7, "#ffffff");
       this.joystickKnob.pos(88, 88);
+      this.joystickKnob.mouseEnabled = false;
       this.joystickBase.addChild(this.joystickKnob);
     }
     spawnJuiceBurst(x, y, intensity, color) {
@@ -6432,6 +6435,7 @@
       Laya.stage.on(Laya.Event.MOUSE_MOVE, this, this.handlePointerMove);
       Laya.stage.on(Laya.Event.MOUSE_UP, this, this.handlePointerUp);
       this.scenePort.joystickBase.on(Laya.Event.MOUSE_DOWN, this, this.handlePointerDown);
+      Laya.timer.frameLoop(1, this, this.updateFrame);
     }
     restartRun() {
       var _a;
@@ -6459,7 +6463,7 @@
       this.presenter = new RuntimePresenter(this.scenePort);
       this.presenter.render(this.runtime.snapshot());
     }
-    onUpdate() {
+    updateFrame() {
       if (!this.runtime || !this.presenter || !this.scenePort) return;
       const keyboard = keyboardMove({
         left: this.keys.has("a") || this.keys.has("arrowleft"),
@@ -6480,6 +6484,7 @@
     }
     onDestroy() {
       var _a;
+      Laya.timer.clear(this, this.updateFrame);
       (_a = this.scenePort) == null ? void 0 : _a.dispose();
       Laya.stage.off(Laya.Event.KEY_DOWN, this, this.handleKeyDown);
       Laya.stage.off(Laya.Event.KEY_UP, this, this.handleKeyUp);

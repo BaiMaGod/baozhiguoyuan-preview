@@ -1,5 +1,7 @@
 source_repository=BaiMaGod/baozhiguoyuan
-source_commit=56da74b00c7c37bab58a6ea5cc4db04a5617e2be
-source_workflow_run=37631191353
+source_commit=648fa2841a3275d580d405ccd81c3f516812abbc
+source_workflow_run=37637362919
 engine=LayaAir 3.4.0
 target=web
+verified_live_loop=true
+verified_real_mouse_joystick=true
