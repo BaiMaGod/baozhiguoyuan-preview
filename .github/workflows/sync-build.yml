@@ -1,4 +1,5 @@
 name: Sync preview build
+# trigger: verified artifact 56da74b
 
 on:
   push:
