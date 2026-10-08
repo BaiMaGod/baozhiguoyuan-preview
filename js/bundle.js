@@ -3845,6 +3845,127 @@
     }
   };
 
+  // src/presentation/PolishAssets.ts
+  var POLISH_ART = {
+    hero: "resources/polish/art/tomato_hero.webp",
+    fruit: "resources/polish/art/spirit_fruit.webp",
+    splash: "resources/polish/art/juice_burst.webp",
+    worm: "resources/polish/art/enemy_worm.webp",
+    elite: "resources/polish/art/enemy_elite.webp",
+    boss: "resources/polish/art/enemy_boss.webp",
+    menuIllustration: "resources/polish/art/orchard_menu_illustration.webp",
+    ground: "resources/polish/art/orchard_ground.webp",
+    fenceFlower: "resources/polish/art/decor_fence_flower.webp",
+    flowerPink: "resources/polish/art/decor_flower_pink.webp",
+    flowerBlue: "resources/polish/art/decor_flower_blue.webp",
+    fruitCrate: "resources/polish/art/decor_fruit_crate.webp"
+  };
+  var POLISH_SOUND = {
+    fire: "resources/polish/audio/fire_pop.ogg",
+    hit: "resources/polish/audio/hit_juice.ogg",
+    burst: "resources/polish/audio/burst_big.ogg",
+    level: "resources/polish/audio/level_reward.ogg",
+    boss: "resources/polish/audio/boss_warning.ogg",
+    victory: "resources/polish/audio/victory.ogg"
+  };
+  var _PolishAssets = class _PolishAssets {
+    constructor() {
+      this.lastSoundAt = /* @__PURE__ */ new Map();
+      this.activeSplashes = 0;
+    }
+    static setSoundEnabled(enabled) {
+      _PolishAssets.soundEnabled = enabled;
+      if (!enabled) {
+        try {
+          Laya.SoundManager.stopAllSound();
+        } catch (e) {
+        }
+      }
+    }
+    attach(parent, art, name, x, y, width, height, fitMode = "contain") {
+      const image = new Laya.Sprite();
+      image.name = name;
+      image.mouseEnabled = false;
+      image.mouseThrough = true;
+      image.size(width, height);
+      image.pos(x, y);
+      parent.addChild(image);
+      image.graphics.loadImage(POLISH_ART[art], 0, 0, width, height, () => {
+        if (image.destroyed) return;
+        const cached = Laya.loader.getRes(POLISH_ART[art]);
+        const verified = !!cached && cached.width > 0 && cached.height > 0;
+        const diagnostic = image;
+        diagnostic.__polishLoaded = verified;
+        if (verified) {
+          const texture = cached;
+          diagnostic.__polishSourceWidth = texture.width;
+          diagnostic.__polishSourceHeight = texture.height;
+          const scale = fitMode === "cover" ? Math.max(width / texture.width, height / texture.height) : Math.min(width / texture.width, height / texture.height);
+          const contentWidth = texture.width * scale;
+          const contentHeight = texture.height * scale;
+          diagnostic.__polishContentWidth = contentWidth;
+          diagnostic.__polishContentHeight = contentHeight;
+          image.graphics.clear();
+          image.graphics.drawImage(
+            texture,
+            (width - contentWidth) / 2,
+            (height - contentHeight) / 2,
+            contentWidth,
+            contentHeight
+          );
+        } else {
+          diagnostic.__polishError = `Image not decoded in texture cache: ${POLISH_ART[art]}`;
+          console.error("[polish-art]", diagnostic.__polishError);
+        }
+      });
+      return image;
+    }
+    play(sound, minGapMs = 150) {
+      var _a;
+      if (!_PolishAssets.soundEnabled) return;
+      const now = Date.now();
+      if (now - ((_a = this.lastSoundAt.get(sound)) != null ? _a : -1e5) < minGapMs) return;
+      this.lastSoundAt.set(sound, now);
+      try {
+        Laya.SoundManager.playSound(POLISH_SOUND[sound], 1);
+      } catch (e) {
+      }
+    }
+    splash(parent, x, y, intensity) {
+      if (this.activeSplashes >= 22) return;
+      this.activeSplashes++;
+      const size = Math.max(40, Math.min(112, 42 + intensity * 27));
+      const image = this.attach(
+        parent,
+        "splash",
+        "ArtJuiceSplash",
+        x - size / 2,
+        y - size / 2,
+        size,
+        size
+      );
+      image.alpha = 0.88;
+      image.pivot(size / 2, size / 2);
+      image.pos(x, y);
+      const complete = Laya.Handler.create(this, () => {
+        this.activeSplashes--;
+        image.removeSelf();
+        image.destroy(true);
+      });
+      Laya.Tween.to(image, {
+        alpha: 0,
+        scaleX: 1.65,
+        scaleY: 1.65
+      }, 270, Laya.Ease.quadOut, complete);
+    }
+    dispose() {
+      this.lastSoundAt.clear();
+    }
+  };
+  // Shared by all art/presentation layers so UI mute also affects combat.
+  _PolishAssets.soundEnabled = true;
+  var PolishAssets = _PolishAssets;
+
   // src/presentation/CommercialScenePort.ts
   var QUALITY_COLORS = {
     green: "#71dd77",
@@ -3955,6 +4076,8 @@
       this.chooseOffer = chooseOffer;
       this.pressUltimate = pressUltimate;
       this.restartRun = restartRun;
+      this.art = new PolishAssets();
+      this.terrainLayer = new Laya.Sprite();
       this.worldLayer = new Laya.Sprite();
       this.juiceLayer = new Laya.Sprite();
       this.threatLayer = new Laya.Sprite();
@@ -4043,6 +4166,7 @@
       this.lastMoveDustFrame = -999;
       this.ambientFrame = 0;
       this.root = owner;
+      this.terrainLayer.name = "TerrainLayer";
       this.worldLayer.name = "WorldLayer";
       this.juiceLayer.name = "JuiceLayer";
       this.threatLayer.name = "FruitThreatLayer";
@@ -4067,6 +4191,7 @@
       this.ultimateLabel.name = "UltimateLabel";
       this.joystickBase.name = "JoystickBase";
       this.joystickKnob.name = "JoystickKnob";
+      this.root.addChild(this.terrainLayer);
       this.root.addChild(this.worldLayer);
       this.root.addChild(this.juiceLayer);
       this.root.addChild(this.threatLayer);
@@ -4074,7 +4199,9 @@
       this.root.addChild(this.fxLayer);
       this.root.addChild(this.uiLayer);
       this.drawWorldBackdrop();
+      this.createOrchardEdgeDecor();
       this.createPlayer();
+      this.art.attach(this.player, "hero", "ArtPlayer", -36, -42, 72, 72);
       this.createPlayerWeapon();
       this.createHud();
       this.createBossBar();
@@ -4087,12 +4214,15 @@
       this.startAmbientAnimation();
     }
     triggerUltimate() {
-      if (this.lastUltimateReady && this.lastUltimateHasJuice) this.spawnUltimateBurst();
-      else if (this.lastUltimateReady) this.spawnNoJuicePing();
+      if (this.lastUltimateReady && this.lastUltimateHasJuice) {
+        this.spawnUltimateBurst();
+        this.art.play("burst", 800);
+      } else if (this.lastUltimateReady) this.spawnNoJuicePing();
       else this.spawnCooldownPing();
       this.pressUltimate();
     }
     dispose() {
+      this.art.dispose();
       Laya.timer.clearAll(this);
       this.joystickBase.offAll();
     }
@@ -4143,6 +4273,11 @@
       this.enemyKinds.set(view.id, view.kind);
       node.pos(view.x, view.y);
       this.drawEnemy(node, view);
+      if (created) {
+        const kind = view.kind === "boss" ? "boss" : view.source === "elite" || view.kind === "armor" || view.kind === "glutton" ? "elite" : "worm";
+        const radius = view.kind === "boss" ? 52 : view.kind === "glutton" ? 35 : radiusFor(view.kind) * 1.6;
+        this.art.attach(node, kind, "ArtEnemy", -radius, -radius * 1.23, radius * 2, radius * 2);
+      }
       if (created && firstAppearance) {
         this.spawnEnemyEntrance(view);
         if (view.source === "elite") this.spawnEliteWarning(view);
@@ -4159,6 +4294,7 @@
         const y = node.y;
         const intensity = kind === "boss" ? 2.6 : kind === "glutton" ? 1.7 : 1.2;
         this.spawnDeathBurst(x, y, intensity, kind);
+        if (kind === "boss") this.art.play("burst", 600);
         if (kind === "boss") {
           this.currentBossId = null;
           this.bossPhase = 0;
@@ -4233,7 +4369,10 @@
         node.graphics.drawCircle(0, 0, radius, "#ed4a38", "#721f18", 1.5);
         node.graphics.drawCircle(-1.5, -1.5, 1.4, "#ffe1b8");
       }
-      if (created && firstAppearance) this.playPlayerAttack(view);
+      if (created && firstAppearance) {
+        this.playPlayerAttack(view);
+        this.art.play("fire", 90);
+      }
     }
     removeProjectile(id) {
       this.seenProjectileIds.delete(id);
@@ -4364,6 +4503,9 @@
           node = new Laya.Sprite();
           this.fruitNodes.set(fruit.fruitId, node);
           this.worldLayer.addChild(node);
+          this.art.attach(node, "fruit", "ArtFruit", -19, -21, 38, 38);
+        } else if (!node.getChildByName("ArtFruit")) {
+          this.art.attach(node, "fruit", "ArtFruit", -19, -21, 38, 38);
         }
         node.pos(fruit.x, fruit.y);
         node.graphics.clear();
@@ -4392,6 +4534,8 @@
           this.handleFruitTransition(fruit, previousOwnership);
         }
         this.fruitOwnership.set(fruit.fruitId, fruit.ownership);
+        const fruitImage = node.getChildByName("ArtFruit");
+        if (fruitImage) fruitImage.visible = fruit.ownership === "IN_GARDEN";
         if (fruit.ownership === "IN_GARDEN" && fruit.reservedBy) {
           threatened.add(fruit.fruitId);
           this.upsertFruitThreat(fruit);
@@ -4490,7 +4634,7 @@
       this.hudChrome.graphics.drawRect(xpBarX, xpBarY, xpBarW, 8, "#1c251d", "#586b4e", 1);
       this.hudChrome.graphics.drawRect(xpBarX, xpBarY, xpBarW * hud.xpFraction, 8, hud.xpFraction >= 0.8 ? "#ffe06a" : "#65d497");
       this.healthText.text = "生命  " + Math.ceil(hud.playerHp) + "/" + Math.ceil(hud.playerMaxHp) + (hud.shield > 0 ? "  护盾+" + Math.ceil(hud.shield) : "");
-      this.fruitText.text = "灵果  " + hud.fruitInGarden + "  | 携 " + hud.fruitCarried + " | 失 " + hud.fruitLost;
+      this.fruitText.text = Laya.Browser.onMobile ? "灵果 " + hud.fruitInGarden + " · 携" + hud.fruitCarried + " · 失" + hud.fruitLost : "灵果  " + hud.fruitInGarden + "  | 携 " + hud.fruitCarried + " | 失 " + hud.fruitLost;
       this.levelText.text = hud.xpNeed === null ? "Lv." + hud.level + "   已满级" : "Lv." + hud.level + "   XP " + hud.xp + "/" + hud.xpNeed;
       const buildEntries = hud.ownedSkills.slice(0, 3).map((skill) => {
         var _a2;
@@ -4598,6 +4742,12 @@
         this.rebuildChoices(hud);
       }
       this.updateScreenShake();
+      if (this.choiceLayer.parent === this.uiLayer) {
+        this.uiLayer.setChildIndex(this.choiceLayer, this.uiLayer.numChildren - 1);
+      }
+      if (this.resultLayer.parent === this.uiLayer) {
+        this.uiLayer.setChildIndex(this.resultLayer, this.uiLayer.numChildren - 1);
+      }
     }
     setJoystickVector(move) {
       this.joystickKnob.pos(88 + move.x * 48, 88 + move.y * 48);
@@ -4605,20 +4755,24 @@
     }
     drawWorldBackdrop() {
       const g = this.worldLayer.graphics;
-      g.drawRect(0, 0, WORLD.designWidth, WORLD.designHeight, "#153a25");
-      const tile = 80;
-      for (let y = 0; y < WORLD.designHeight; y += tile) {
-        for (let x = 0; x < WORLD.designWidth; x += tile) {
-          const even = (x / tile + y / tile) % 2 === 0;
-          g.drawRect(x, y, tile, tile, even ? "#1d472b" : "#204c2e");
-        }
-      }
-      for (let x = 40; x < WORLD.designWidth; x += 120) {
-        const y = 110 + x * 7 % 370;
-        g.drawCircle(x, y, 4, "#2f6238");
-        g.drawLine(x, y - 2, x - 4, y - 8, "#6fa24f", 2);
-        g.drawLine(x, y - 2, x + 5, y - 7, "#5c9347", 2);
-      }
+      this.terrainLayer.graphics.drawRect(
+        0,
+        0,
+        WORLD.designWidth,
+        WORLD.designHeight,
+        "#20482b"
+      );
+      const groundArt = this.art.attach(
+        this.terrainLayer,
+        "ground",
+        "ArtBattlefieldGround",
+        0,
+        0,
+        WORLD.designWidth,
+        WORLD.designHeight,
+        "cover"
+      );
+      groundArt.alpha = 0.48;
       const scale = Math.min(WORLD.designWidth / WORLD.width, WORLD.designHeight / WORLD.height);
       const orchard = WORLD.gardenCell * 3 * scale;
       const left = WORLD.designWidth / 2 - orchard / 2;
@@ -4679,6 +4833,42 @@
         firefly.alpha = 0.45;
         this.worldLayer.addChild(firefly);
         this.ambientDecorNodes.push(firefly);
+      }
+    }
+    /**
+     * Art-backed perimeter detail, intentionally outside the central 3x3 orchard
+     * and away from the joystick / ultimate controls. These are true transparent
+     * WebP cutouts from the project's pre-existing illustrated visual references;
+     * they add zero physics bodies, do not receive pointer events, and do not
+     * allocate per-frame particles or extra drawing instructions.
+     */
+    createOrchardEdgeDecor() {
+      const placements = [
+        { art: "fenceFlower", x: 24, y: 156, width: 95, height: 103 },
+        { art: "flowerPink", x: 221, y: 123, width: 70, height: 91 },
+        { art: "flowerBlue", x: 1024, y: 135, width: 76, height: 94 },
+        { art: "fruitCrate", x: 1206, y: 160, width: 100, height: 100 },
+        { art: "flowerPink", x: 35, y: 352, width: 76, height: 97 },
+        { art: "fenceFlower", x: 1207, y: 343, width: 91, height: 96 },
+        { art: "fruitCrate", x: 28, y: 461, width: 98, height: 104 },
+        { art: "flowerBlue", x: 1190, y: 450, width: 76, height: 89 },
+        { art: "flowerBlue", x: 316, y: 639, width: 79, height: 83 },
+        { art: "flowerPink", x: 434, y: 642, width: 72, height: 83 },
+        { art: "fenceFlower", x: 553, y: 668, width: 69, height: 75 },
+        { art: "fruitCrate", x: 813, y: 663, width: 83, height: 85 }
+      ];
+      for (let i = 0; i < placements.length; i++) {
+        const p = placements[i];
+        const node = this.art.attach(
+          this.worldLayer,
+          p.art,
+          "ArtEdgeDecor-" + i,
+          p.x,
+          p.y,
+          p.width,
+          p.height
+        );
+        node.alpha = 0.78;
       }
     }
     createPlayer() {
@@ -4930,7 +5120,7 @@
       this.uiLayer.addChild(this.buildText);
     }
     configureHudText(text, x, y, w, h, size, align) {
-      text.fontSize = Laya.Browser.onMobile ? size + 2 : size;
+      text.fontSize = Laya.Browser.onMobile ? size + 5 : size;
       text.bold = true;
       text.color = "#fff8df";
       text.stroke = 2;
@@ -5090,6 +5280,8 @@
       }
       this.fxLayer.addChild(fx);
       this.animateFx(fx, 13, 1.8 + intensity * 0.35, 0.88);
+      this.art.splash(this.fxLayer, x, y, intensity);
+      this.art.play("hit", 130);
     }
     spawnEnemyEntrance(view) {
       const ring = new Laya.Sprite();
@@ -5669,6 +5861,7 @@
     }
     spawnChoiceAppliedFeedback(choice) {
       var _a, _b, _c, _d;
+      this.art.play("level", 300);
       const entries = Object.entries(choice.increments).filter(([, value]) => Math.abs(value) > 1e-9);
       const [parameter, delta] = (_a = entries[0]) != null ? _a : ["强化", 0];
       const unit = (_b = VALUE_UNITS[parameter]) != null ? _b : "";
@@ -5681,7 +5874,7 @@
       box.pos(WORLD.designWidth / 2 - 300, 188);
       box.graphics.drawRect(0, 0, 600, 58, "#14251b", qualityColor, 3);
       box.graphics.drawLine(18, 8, 582, 8, qualityColor, 2);
-      this.uiLayer.addChild(box);
+      this.addTransientHud(box);
       const label = new Laya.Text();
       label.text = "强化生效： " + message;
       label.fontSize = Laya.Browser.onMobile ? 21 : 19;
@@ -5720,8 +5913,15 @@
       this.uiLayer.addChild(ping);
       this.animateFx(ping, 10, 1.18, 0.55);
     }
+    addTransientHud(node) {
+      const modalIndices = [this.choiceLayer, this.resultLayer].filter((layer) => layer.parent === this.uiLayer).map((layer) => this.uiLayer.getChildIndex(layer));
+      const insertionIndex = modalIndices.length ? Math.min(...modalIndices) : this.uiLayer.numChildren;
+      this.uiLayer.addChildAt(node, insertionIndex);
+    }
     showBossWarning() {
+      this.art.play("boss", 2e3);
       const banner = new Laya.Sprite();
+      banner.name = "BossWarning";
       banner.pos(WORLD.designWidth / 2 - 270, 152);
       banner.graphics.drawRect(0, 4, 540, 86, "#1b0d0c");
       banner.graphics.drawRect(0, 0, 540, 82, "#5b1918", "#f0b85f", 4);
@@ -5737,7 +5937,7 @@
       title.valign = "middle";
       title.size(540, 82);
       banner.addChild(title);
-      this.uiLayer.addChild(banner);
+      this.addTransientHud(banner);
       Laya.timer.once(1800, banner, () => {
         banner.removeSelf();
         banner.destroy(true);
@@ -6049,6 +6249,7 @@
     }
     showCenterCallout(message, color, border, fontSize) {
       const box = new Laya.Sprite();
+      box.name = "CenterCallout";
       const width = 520;
       const height = 68;
       box.pos(WORLD.designWidth / 2 - width / 2, 142);
@@ -6066,7 +6267,9 @@
       text.valign = "middle";
       text.size(width, height);
       box.addChild(text);
-      this.uiLayer.addChild(box);
+      const modalIndices = [this.choiceLayer, this.resultLayer].filter((layer) => layer.parent === this.uiLayer).map((layer) => this.uiLayer.getChildIndex(layer));
+      const topModalIndex = modalIndices.length > 0 ? Math.min(...modalIndices) : this.uiLayer.numChildren;
+      this.uiLayer.addChildAt(box, topModalIndex);
       let frame = 0;
       const frames = 64;
       const step = () => {
@@ -6137,9 +6340,14 @@
       this.resultLayer.removeChildren(0, 2147483647, true);
       this.resultLayer.graphics.clear();
       this.resultLayer.visible = true;
-      this.resultLayer.alpha = 0.98;
-      this.resultLayer.graphics.drawRect(0, 0, WORLD.designWidth, WORLD.designHeight, "#07150f");
+      this.resultLayer.alpha = 1;
+      const resultScrim = new Laya.Sprite();
+      resultScrim.name = "ResultScrim";
+      resultScrim.graphics.drawRect(0, 0, WORLD.designWidth, WORLD.designHeight, "#06140c");
+      resultScrim.alpha = 0.9;
+      this.resultLayer.addChild(resultScrim);
       const won = hud.resultReason === "VICTORY";
+      if (won) this.art.play("victory", 1e3);
       const panelX = 250;
       const panelY = 132;
       const panelW = 780;
@@ -6167,6 +6375,16 @@
       title.pos(panelX + 80, panelY + 132);
       title.size(panelW - 160, 70);
       this.resultLayer.addChild(title);
+      const character = this.art.attach(
+        this.resultLayer,
+        won ? "hero" : "boss",
+        "ArtResult",
+        won ? 920 : 920,
+        248,
+        124,
+        124
+      );
+      this.resultLayer.setChildIndex(character, 1);
       const explanation = new Laya.Text();
       explanation.text = won ? "剩余灵果 " + hud.fruitInGarden + " 枚 · 全部转化为局外成长资源" : hud.resultReason === "PLAYER_DEAD" ? "番茄战士倒下了，本局无法带回灵果" : "九枚灵果已全部丢失，果园沦陷";
       explanation.fontSize = 24;
@@ -6216,9 +6434,13 @@
         return;
       }
       this.choiceLayer.visible = true;
-      this.choiceLayer.graphics.drawRect(0, 0, WORLD.designWidth, WORLD.designHeight, "#07120d");
+      const choiceScrim = new Laya.Sprite();
+      choiceScrim.name = "UpgradeScrim";
+      choiceScrim.graphics.drawRect(0, 0, WORLD.designWidth, WORLD.designHeight, "#07120d");
+      choiceScrim.alpha = 0.86;
+      this.choiceLayer.addChild(choiceScrim);
       this.choiceLayer.graphics.drawRect(0, 0, WORLD.designWidth, 92, "#0f2419");
-      this.choiceLayer.alpha = 0.98;
+      this.choiceLayer.alpha = 1;
       const title = new Laya.Text();
       title.text = "升级！选择一项强化";
       title.fontSize = 36;
@@ -6316,6 +6538,7 @@
         nextBadge.size(72, 25);
         panel.addChild(nextBadge);
         const emblem = new Laya.Sprite();
+        emblem.name = "OfferEmblem-" + card.skillId;
         emblem.pos(w / 2, 66);
         emblem.graphics.drawCircle(0, 4, 43, "#0f1f16");
         emblem.graphics.drawCircle(0, 0, 38, "#344d35", color, 4);
@@ -6332,6 +6555,20 @@
         icon.valign = "middle";
         icon.pos(-31, -31);
         icon.size(62, 62);
+        const pictogram = ["juicy", "death_juice", "linger", "cling", "ripe_splash"].includes(card.skillId) ? "splash" : ["hp", "heal", "tough", "wall", "repair"].includes(card.skillId) ? "fruit" : "hero";
+        this.art.attach(
+          emblem,
+          pictogram,
+          "ArtOfferIcon-" + card.skillId,
+          -31,
+          -35,
+          62,
+          62
+        );
+        icon.fontSize = 18;
+        icon.pos(16, 12);
+        icon.size(26, 26);
+        icon.stroke = 3;
         emblem.addChild(icon);
         const skillTitle = new Laya.Text();
         skillTitle.text = (_c = SKILL_NAMES[card.skillId]) != null ? _c : card.skillId;
@@ -6382,6 +6619,197 @@
     }
   };
 
+  // src/presentation/GameFlowOverlay.ts
+  var GameFlowOverlay = class {
+    constructor(owner, onStart, onResume, onPause) {
+      this.onStart = onStart;
+      this.onResume = onResume;
+      this.onPause = onPause;
+      this.layer = new Laya.Sprite();
+      this.scrim = new Laya.Sprite();
+      this.soundButton = new Laya.Sprite();
+      this.soundLabel = new Laya.Text();
+      this.art = new PolishAssets();
+      this.pauseButton = new Laya.Sprite();
+      this.title = new Laya.Text();
+      this.description = new Laya.Text();
+      this.primaryLabel = new Laya.Text();
+      this.primaryButton = new Laya.Sprite();
+      this.mode = "start";
+      const root = owner;
+      const w = WORLD.designWidth;
+      const h = WORLD.designHeight;
+      this.pauseButton.name = "PauseButton";
+      this.pauseButton.pos(w - 84, 91);
+      this.pauseButton.size(60, 52);
+      this.pauseButton.mouseEnabled = true;
+      this.pauseButton.mouseThrough = false;
+      this.pauseButton.graphics.drawRect(3, 4, 54, 46, "#0a1f16");
+      this.pauseButton.graphics.drawRect(0, 0, 54, 46, "#31563c", "#c6dc91", 2);
+      this.pauseButton.graphics.drawRect(17, 12, 6, 22, "#f4edc9");
+      this.pauseButton.graphics.drawRect(30, 12, 6, 22, "#f4edc9");
+      this.pauseButton.on(Laya.Event.CLICK, this, () => {
+        if (this.mode === "hidden") this.onPause();
+      });
+      root.addChild(this.pauseButton);
+      this.layer.name = "GameFlowOverlay";
+      this.layer.size(w, h);
+      this.layer.mouseEnabled = true;
+      this.layer.mouseThrough = false;
+      this.scrim.name = "MenuScrim";
+      this.scrim.graphics.drawRect(0, 0, w, h, "#071b13");
+      this.scrim.alpha = 0.83;
+      this.layer.addChild(this.scrim);
+      this.layer.graphics.drawRect(w / 2 - 330, 100, 660, 498, "#122a20", "#e0bd71", 5);
+      this.layer.graphics.drawRect(w / 2 - 314, 116, 628, 466, "#203e2d", "#5b8d5a", 2);
+      this.layer.graphics.drawRect(w / 2 - 310, 120, 620, 12, "#c95a3c");
+      this.title.name = "GameFlowTitle";
+      this.title.bold = true;
+      this.title.fontSize = 56;
+      this.title.color = "#ffe7a0";
+      this.title.stroke = 4;
+      this.title.strokeColor = "#542d1d";
+      this.title.align = "center";
+      this.title.valign = "middle";
+      this.title.pos(w / 2 - 310, 161);
+      this.title.size(620, 83);
+      this.layer.addChild(this.title);
+      this.description.name = "GameFlowInstructions";
+      this.description.fontSize = 23;
+      this.description.bold = true;
+      this.description.color = "#e6f3d1";
+      this.description.align = "center";
+      this.description.valign = "middle";
+      this.description.leading = 13;
+      this.description.pos(w / 2 - 296, 257);
+      this.description.size(592, 132);
+      this.layer.addChild(this.description);
+      this.primaryButton.name = "StartResumeButton";
+      this.primaryButton.pos(w / 2 - 180, 427);
+      this.primaryButton.size(360, 88);
+      this.primaryButton.mouseEnabled = true;
+      this.primaryButton.mouseThrough = false;
+      this.primaryButton.graphics.drawRect(6, 8, 354, 80, "#0b2219");
+      this.primaryButton.graphics.drawRect(0, 0, 354, 80, "#df6d39", "#ffdf86", 4);
+      this.primaryButton.graphics.drawRect(10, 9, 334, 9, "#ffc57b");
+      this.primaryButton.on(Laya.Event.CLICK, this, () => {
+        if (this.mode === "start") this.onStart();
+        else if (this.mode === "paused") this.onResume();
+      });
+      this.primaryLabel.fontSize = 34;
+      this.primaryLabel.bold = true;
+      this.primaryLabel.color = "#fff9e7";
+      this.primaryLabel.stroke = 3;
+      this.primaryLabel.strokeColor = "#713120";
+      this.primaryLabel.align = "center";
+      this.primaryLabel.valign = "middle";
+      this.primaryLabel.size(354, 80);
+      this.primaryButton.addChild(this.primaryLabel);
+      this.layer.addChild(this.primaryButton);
+      const smallPrint = new Laya.Text();
+      smallPrint.text = "守住九枚灵果  ·  自动攻击  ·  爆汁升级";
+      smallPrint.fontSize = 19;
+      smallPrint.color = "#b3d0a7";
+      smallPrint.align = "center";
+      smallPrint.pos(w / 2 - 292, 544);
+      smallPrint.size(584, 28);
+      this.layer.addChild(smallPrint);
+      this.soundButton.name = "SoundToggleButton";
+      this.soundButton.size(194, 55);
+      this.soundButton.pos(w / 2 - 97, 620);
+      this.soundButton.mouseEnabled = true;
+      this.soundButton.mouseThrough = false;
+      this.soundButton.graphics.drawRect(0, 0, 194, 55, "#274a35", "#e0c37b", 2);
+      this.soundButton.graphics.drawRect(7, 6, 180, 42, "#3e6948", "#77a266", 1);
+      this.soundLabel.name = "SoundToggleLabel";
+      this.soundLabel.fontSize = 23;
+      this.soundLabel.bold = true;
+      this.soundLabel.color = "#fff5d5";
+      this.soundLabel.align = "center";
+      this.soundLabel.valign = "middle";
+      this.soundLabel.size(194, 55);
+      this.soundLabel.mouseEnabled = false;
+      this.soundButton.addChild(this.soundLabel);
+      this.soundButton.on(Laya.Event.CLICK, this, () => {
+        PolishAssets.setSoundEnabled(!PolishAssets.soundEnabled);
+        this.refreshSoundLabel();
+      });
+      this.refreshSoundLabel();
+      this.layer.addChild(this.soundButton);
+      this.primaryButton.on(Laya.Event.MOUSE_DOWN, this, () => {
+        this.primaryButton.alpha = 0.85;
+      });
+      this.primaryButton.on(Laya.Event.MOUSE_UP, this, () => {
+        this.primaryButton.alpha = 1;
+      });
+      this.primaryButton.on(Laya.Event.MOUSE_OUT, this, () => {
+        this.primaryButton.alpha = 1;
+      });
+      root.addChild(this.layer);
+      const illustration = this.art.attach(
+        this.layer,
+        "menuIllustration",
+        "ArtMenuIllustration",
+        18,
+        258,
+        306,
+        190
+      );
+      const boss = this.art.attach(this.layer, "boss", "ArtMenuBoss", 135, 460, 94, 94);
+      const hero = this.art.attach(this.layer, "hero", "ArtMenuHero", 1030, 260, 184, 184);
+      const fruit = this.art.attach(this.layer, "fruit", "ArtMenuFruit", 1018, 550, 66, 66);
+      const leftSplash = this.art.attach(this.layer, "splash", "ArtMenuJuiceLeft", 32, 466, 154, 154);
+      const rightSplash = this.art.attach(this.layer, "splash", "ArtMenuJuiceRight", 1130, 472, 132, 132);
+      leftSplash.alpha = 0.58;
+      rightSplash.alpha = 0.58;
+      this.layer.setChildIndex(this.scrim, 0);
+      this.layer.setChildIndex(leftSplash, 1);
+      this.layer.setChildIndex(rightSplash, 2);
+      this.layer.setChildIndex(illustration, 3);
+      this.layer.setChildIndex(boss, 4);
+      this.layer.setChildIndex(hero, 5);
+      this.layer.setChildIndex(fruit, 6);
+      this.showStart();
+    }
+    refreshSoundLabel() {
+      this.soundLabel.text = PolishAssets.soundEnabled ? "♫  音效：开" : "♫  音效：关";
+    }
+    showStart() {
+      this.mode = "start";
+      this.title.text = "爆汁果园";
+      this.description.text = "怪物正在靠近果园，保护中央的九枚灵果！\n电脑：WASD / 方向键移动\n手机：拖动左下角摇杆移动 · 点击爆爆汁释放大招";
+      this.primaryLabel.text = "开始守园";
+      this.layer.visible = true;
+      this.pauseButton.visible = false;
+    }
+    showPaused() {
+      this.mode = "paused";
+      this.title.text = "已暂停";
+      this.description.text = "战斗与倒计时已暂停\n继续守护果园，别让怪物偷走灵果！\n电脑：P / Esc 暂停或继续";
+      this.primaryLabel.text = "继续游戏";
+      this.layer.visible = true;
+      this.pauseButton.visible = false;
+    }
+    hide() {
+      this.mode = "hidden";
+      this.layer.visible = false;
+      this.pauseButton.visible = true;
+    }
+    setPauseEnabled(enabled) {
+      this.pauseButton.visible = this.mode === "hidden" && enabled;
+    }
+    dispose() {
+      this.art.dispose();
+      this.soundButton.offAll();
+      this.primaryButton.offAll();
+      this.pauseButton.offAll();
+      this.layer.removeSelf();
+      this.layer.destroy(true);
+      this.pauseButton.removeSelf();
+      this.pauseButton.destroy(true);
+    }
+  };
+
   // src/Main.ts
   var { regClass } = Laya;
   var Main = class extends Laya.Script {
@@ -6390,27 +6818,97 @@
       this.runtime = null;
       this.presenter = null;
       this.scenePort = null;
+      this.flowOverlay = null;
+      this.started = false;
       this.keys = /* @__PURE__ */ new Set();
       this.joystickActive = false;
+      this.joystickTouchId = null;
+      this.nativeTouchSeen = false;
+      this.nativeStickIdentifier = null;
+      this.domTouchStart = (event) => {
+        var _a, _b;
+        this.nativeTouchSeen = true;
+        if (!this.started || ((_a = this.runtime) == null ? void 0 : _a.simulation.phase) !== "PLAYING" || this.nativeStickIdentifier !== null) return;
+        const center = (_b = this.scenePort) == null ? void 0 : _b.joystickBase.localToGlobal(new Laya.Point(88, 88));
+        if (!center) return;
+        for (const touch of Array.from(event.changedTouches)) {
+          const p = this.touchToStage(touch);
+          if (!p || Math.abs(p.x - center.x) > 110 || Math.abs(p.y - center.y) > 120) continue;
+          this.nativeStickIdentifier = touch.identifier;
+          this.joystickTouchId = touch.identifier;
+          this.joystickActive = true;
+          this.updateJoystick(p.x, p.y);
+          break;
+        }
+      };
+      this.domTouchMove = (event) => {
+        if (this.nativeStickIdentifier === null || !this.joystickActive) return;
+        const touch = Array.from(event.changedTouches).find((t) => t.identifier === this.nativeStickIdentifier);
+        if (!touch) return;
+        const p = this.touchToStage(touch);
+        if (p) this.updateJoystick(p.x, p.y);
+      };
+      this.domTouchEnd = (event) => {
+        var _a;
+        if (this.nativeStickIdentifier === null) return;
+        const touches = Array.from(event.touches);
+        const center = (_a = this.scenePort) == null ? void 0 : _a.joystickBase.localToGlobal(new Laya.Point(88, 88));
+        const leftThumb = touches.find((t) => {
+          const p = this.touchToStage(t);
+          return !!center && !!p && Math.abs(p.x - center.x) <= 125 && Math.abs(p.y - center.y) <= 125;
+        });
+        if (leftThumb) {
+          this.nativeStickIdentifier = leftThumb.identifier;
+          this.joystickTouchId = leftThumb.identifier;
+          this.joystickActive = true;
+          const p = this.touchToStage(leftThumb);
+          if (p) this.updateJoystick(p.x, p.y);
+          return;
+        }
+        if (!Array.from(event.changedTouches).some((t) => t.identifier === this.nativeStickIdentifier)) return;
+        this.nativeStickIdentifier = null;
+        this.joystickTouchId = null;
+        this.joystickActive = false;
+        this.joystickMove = { x: 0, y: 0 };
+      };
       this.joystickMove = { x: 0, y: 0 };
       this.lastMove = { x: 0, y: 0 };
       this.domKeyDown = (event) => {
-        var _a;
+        var _a, _b;
         const key = event.key.toLowerCase();
+        if ([" ", "enter", "escape", "p"].includes(key)) event.preventDefault();
+        if (event.repeat && [" ", "enter", "escape", "p"].includes(key)) return;
+        if (!this.started) {
+          if (key === "enter" || key === " ") this.startRun();
+          return;
+        }
+        if (key === "escape" || key === "p") {
+          this.togglePause();
+          return;
+        }
         this.keys.add(key);
-        if (key === " " || key === "space" || event.code === "Space") {
-          event.preventDefault();
-          (_a = this.scenePort) == null ? void 0 : _a.triggerUltimate();
+        if ((key === " " || event.code === "Space") && ((_a = this.runtime) == null ? void 0 : _a.simulation.phase) === "PLAYING") {
+          (_b = this.scenePort) == null ? void 0 : _b.triggerUltimate();
         }
       };
       this.domKeyUp = (event) => {
         this.keys.delete(event.key.toLowerCase());
       };
     }
+    touchToStage(touch) {
+      const canvas = Laya.Browser.window.document.querySelector("canvas");
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {
+        x: (touch.clientX - rect.left) * Laya.stage.width / rect.width,
+        y: (touch.clientY - rect.top) * Laya.stage.height / rect.height
+      };
+    }
     onStart() {
       Laya.stage.scaleMode = Laya.Stage.SCALE_FIXED_AUTO;
       Laya.stage.screenMode = Laya.Stage.SCREEN_HORIZONTAL;
-      Laya.stage.bgColor = "#17351f";
+      Laya.stage.bgColor = "#153a25";
       this.runtime = new GameRuntimeController(Date.now() >>> 0, { enableWaves: true });
       this.scenePort = new CommercialScenePort(
         this.owner,
@@ -6425,25 +6923,39 @@
         () => this.restartRun()
       );
       this.presenter = new RuntimePresenter(this.scenePort);
+      this.runtime.pause();
       this.presenter.render(this.runtime.snapshot());
+      this.flowOverlay = new GameFlowOverlay(this.owner, () => this.startRun(), () => this.resumeRun(), () => this.togglePause());
+      this.started = false;
+      this.relayout();
+      Laya.stage.on(Laya.Event.RESIZE, this, this.relayout);
       Laya.stage.on(Laya.Event.KEY_DOWN, this, this.handleKeyDown);
       Laya.stage.on(Laya.Event.KEY_UP, this, this.handleKeyUp);
       Laya.Browser.window.addEventListener("keydown", this.domKeyDown);
       Laya.Browser.window.addEventListener("keyup", this.domKeyUp);
+      Laya.Browser.window.addEventListener("touchstart", this.domTouchStart, { passive: true });
+      Laya.Browser.window.addEventListener("touchmove", this.domTouchMove, { passive: true });
+      Laya.Browser.window.addEventListener("touchend", this.domTouchEnd, { passive: true });
+      Laya.Browser.window.addEventListener("touchcancel", this.domTouchEnd, { passive: true });
       Laya.stage.on(Laya.Event.BLUR, this, this.handleBlur);
       Laya.stage.on(Laya.Event.FOCUS, this, this.handleFocus);
+      Laya.stage.on(Laya.Event.MOUSE_DOWN, this, this.handleStagePointerDown);
       Laya.stage.on(Laya.Event.MOUSE_MOVE, this, this.handlePointerMove);
       Laya.stage.on(Laya.Event.MOUSE_UP, this, this.handlePointerUp);
       this.scenePort.joystickBase.on(Laya.Event.MOUSE_DOWN, this, this.handlePointerDown);
       Laya.timer.frameLoop(1, this, this.updateFrame);
     }
     restartRun() {
-      var _a;
+      var _a, _b;
       const root = this.owner;
-      (_a = this.scenePort) == null ? void 0 : _a.dispose();
+      (_a = this.flowOverlay) == null ? void 0 : _a.dispose();
+      this.flowOverlay = null;
+      (_b = this.scenePort) == null ? void 0 : _b.dispose();
       root.removeChildren(0, 2147483647, true);
       this.keys.clear();
       this.joystickActive = false;
+      this.joystickTouchId = null;
+      this.nativeStickIdentifier = null;
       this.joystickMove = { x: 0, y: 0 };
       this.lastMove = { x: 0, y: 0 };
       this.runtime = new GameRuntimeController(Date.now() >>> 0, { enableWaves: true });
@@ -6461,9 +6973,53 @@
       );
       this.scenePort.joystickBase.on(Laya.Event.MOUSE_DOWN, this, this.handlePointerDown);
       this.presenter = new RuntimePresenter(this.scenePort);
+      this.runtime.pause();
       this.presenter.render(this.runtime.snapshot());
+      this.flowOverlay = new GameFlowOverlay(this.owner, () => this.startRun(), () => this.resumeRun(), () => this.togglePause());
+      this.started = false;
+      this.relayout();
+    }
+    relayout() {
+      const scene = this.owner;
+      scene.x = Math.max(0, Math.round((Laya.stage.width - WORLD.designWidth) / 2));
+      scene.y = Math.max(0, Math.round((Laya.stage.height - WORLD.designHeight) / 2));
+    }
+    startRun() {
+      var _a;
+      if (!this.runtime || this.started) return;
+      this.started = true;
+      this.keys.clear();
+      this.lastMove = { x: 0, y: 0 };
+      this.runtime.resume();
+      (_a = this.flowOverlay) == null ? void 0 : _a.hide();
+    }
+    resumeRun() {
+      var _a;
+      if (!this.runtime || this.runtime.simulation.phase !== "PAUSED") return;
+      this.runtime.resume();
+      this.keys.clear();
+      this.lastMove = { x: 0, y: 0 };
+      (_a = this.flowOverlay) == null ? void 0 : _a.hide();
+    }
+    togglePause() {
+      var _a;
+      if (!this.started || !this.runtime) return;
+      if (this.runtime.simulation.phase === "PLAYING") {
+        this.runtime.setMove(0, 0);
+        this.runtime.pause();
+        this.keys.clear();
+        this.joystickActive = false;
+        this.joystickTouchId = null;
+        this.nativeStickIdentifier = null;
+        this.joystickMove = { x: 0, y: 0 };
+        this.lastMove = { x: 0, y: 0 };
+        (_a = this.flowOverlay) == null ? void 0 : _a.showPaused();
+      } else if (this.runtime.simulation.phase === "PAUSED") {
+        this.resumeRun();
+      }
     }
     updateFrame() {
+      var _a;
       if (!this.runtime || !this.presenter || !this.scenePort) return;
       const keyboard = keyboardMove({
         left: this.keys.has("a") || this.keys.has("arrowleft"),
@@ -6477,21 +7033,30 @@
           this.runtime.setMove(combined.x, combined.y);
           this.lastMove = combined;
         }
-        this.runtime.advanceFrame(Laya.timer.delta);
+        const frameMilliseconds = Math.min(Math.max(Laya.timer.delta, 0), 100);
+        this.runtime.advanceFrame(frameMilliseconds);
       }
       this.scenePort.setJoystickVector(this.joystickMove);
       this.presenter.render(this.runtime.snapshot());
+      (_a = this.flowOverlay) == null ? void 0 : _a.setPauseEnabled(this.started && this.runtime.simulation.phase === "PLAYING");
     }
     onDestroy() {
-      var _a;
+      var _a, _b;
       Laya.timer.clear(this, this.updateFrame);
-      (_a = this.scenePort) == null ? void 0 : _a.dispose();
+      (_a = this.flowOverlay) == null ? void 0 : _a.dispose();
+      (_b = this.scenePort) == null ? void 0 : _b.dispose();
+      Laya.stage.off(Laya.Event.RESIZE, this, this.relayout);
       Laya.stage.off(Laya.Event.KEY_DOWN, this, this.handleKeyDown);
       Laya.stage.off(Laya.Event.KEY_UP, this, this.handleKeyUp);
       Laya.Browser.window.removeEventListener("keydown", this.domKeyDown);
       Laya.Browser.window.removeEventListener("keyup", this.domKeyUp);
+      Laya.Browser.window.removeEventListener("touchstart", this.domTouchStart);
+      Laya.Browser.window.removeEventListener("touchmove", this.domTouchMove);
+      Laya.Browser.window.removeEventListener("touchend", this.domTouchEnd);
+      Laya.Browser.window.removeEventListener("touchcancel", this.domTouchEnd);
       Laya.stage.off(Laya.Event.BLUR, this, this.handleBlur);
       Laya.stage.off(Laya.Event.FOCUS, this, this.handleFocus);
+      Laya.stage.off(Laya.Event.MOUSE_DOWN, this, this.handleStagePointerDown);
       Laya.stage.off(Laya.Event.MOUSE_MOVE, this, this.handlePointerMove);
       Laya.stage.off(Laya.Event.MOUSE_UP, this, this.handlePointerUp);
     }
@@ -6499,8 +7064,7 @@
       var _a, _b;
       const key = ((_a = event.key) != null ? _a : "").toLowerCase();
       if (!key) return;
-      this.keys.add(key);
-      if (key === " " || key === "space") (_b = this.scenePort) == null ? void 0 : _b.triggerUltimate();
+      if (this.started && ((_b = this.runtime) == null ? void 0 : _b.simulation.phase) === "PLAYING") this.keys.add(key);
     }
     handleKeyUp(event) {
       var _a;
@@ -6508,34 +7072,57 @@
       if (key) this.keys.delete(key);
     }
     handleBlur() {
-      var _a, _b;
+      var _a, _b, _c;
       this.keys.clear();
       this.joystickActive = false;
+      this.joystickTouchId = null;
+      this.nativeStickIdentifier = null;
       this.joystickMove = { x: 0, y: 0 };
       this.lastMove = { x: 0, y: 0 };
       (_a = this.runtime) == null ? void 0 : _a.setMove(0, 0);
-      (_b = this.runtime) == null ? void 0 : _b.enterBackground();
+      if ((_b = this.runtime) == null ? void 0 : _b.enterBackground()) (_c = this.flowOverlay) == null ? void 0 : _c.showPaused();
     }
     handleFocus() {
-      var _a;
-      if (((_a = this.runtime) == null ? void 0 : _a.simulation.phase) === "BACKGROUND") this.runtime.resume();
+      var _a, _b;
+      if (((_a = this.runtime) == null ? void 0 : _a.simulation.phase) === "BACKGROUND") {
+        this.runtime.resume();
+        this.runtime.pause();
+        if (this.started) (_b = this.flowOverlay) == null ? void 0 : _b.showPaused();
+      }
+    }
+    handleStagePointerDown(event) {
+      var _a, _b;
+      if (this.nativeTouchSeen || !this.started || ((_a = this.runtime) == null ? void 0 : _a.simulation.phase) !== "PLAYING") return;
+      const center = (_b = this.scenePort) == null ? void 0 : _b.joystickBase.localToGlobal(new Laya.Point(88, 88));
+      if (center && Math.abs(event.stageX - center.x) <= 110 && Math.abs(event.stageY - center.y) <= 120) {
+        this.handlePointerDown(event);
+      }
     }
     handlePointerDown(event) {
+      var _a;
+      if (this.nativeTouchSeen || !this.started || ((_a = this.runtime) == null ? void 0 : _a.simulation.phase) !== "PLAYING") return;
+      if (this.joystickActive && this.joystickTouchId !== event.touchId) return;
+      this.joystickTouchId = event.touchId;
       this.joystickActive = true;
       this.updateJoystick(event.stageX, event.stageY);
     }
     handlePointerMove(event) {
-      if (!this.joystickActive) return;
+      if (this.nativeTouchSeen || !this.joystickActive || this.joystickTouchId !== event.touchId) return;
       this.updateJoystick(event.stageX, event.stageY);
     }
-    handlePointerUp() {
+    handlePointerUp(event) {
+      if (this.nativeTouchSeen) return;
+      if (!this.joystickActive || this.joystickTouchId !== event.touchId) return;
       this.joystickActive = false;
+      this.joystickTouchId = null;
+      this.nativeStickIdentifier = null;
       this.joystickMove = { x: 0, y: 0 };
     }
     updateJoystick(stageX, stageY) {
-      const centerX = 24 + 88;
-      const centerY = WORLD.designHeight - 205 + 88;
-      this.joystickMove = joystickMove(stageX - centerX, stageY - centerY, 70);
+      var _a;
+      const center = (_a = this.scenePort) == null ? void 0 : _a.joystickBase.localToGlobal(new Laya.Point(88, 88));
+      if (!center) return;
+      this.joystickMove = joystickMove(stageX - center.x, stageY - center.y, 70);
     }
   };
   Main = __decorateClass([

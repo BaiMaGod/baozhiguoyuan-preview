@@ -1,7 +1,6 @@
-source_repository=BaiMaGod/baozhiguoyuan
-source_commit=648fa2841a3275d580d405ccd81c3f516812abbc
-source_workflow_run=37637362919
-engine=LayaAir 3.4.0
-target=web
-verified_live_loop=true
-verified_real_mouse_joystick=true
+《爆汁果园》GitHub Pages 预览部署
+状态：已通过 Chromium 桌面/手机横屏回归的稳定版本
+正式库提交：3cc3eb59b12024ffcf4791bf9b14096a1a4bc52b
+验证 CI：https://github.com/BaiMaGod/baozhiguoyuan/actions/runs/37741634228
+引擎：LayaAir 3.4
+说明：第五轮中央菜圃材质已提交正式库，但尚未通过运行验收，因此未混入此稳定预览包。
