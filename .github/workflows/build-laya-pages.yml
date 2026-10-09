@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Trigger verified build for latest source including juice reconciler and all UI/frame tests.
+  # Trigger portrait-joystick input fix at private commit 99cb4c234df129cdfabbb6c4454d584493c3fbde; browser touch QA required.
   push:
     branches: [main]
     paths:
