@@ -1,0 +1,182 @@
+# This workflow runs on the PUBLIC preview repository's free GitHub-hosted
+# runner. Private game source is checked out read-only and NEVER committed here.
+# It publishes only a verified, compiled LayaAir Web artifact to GitHub Pages.
+name: Build BaoZhiGuoYuan with LayaAir 3.4 and publish Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: baozhiguoyuan-pages-production
+  cancel-in-progress: false
+
+jobs:
+  verify-build-and-deploy:
+    name: Real Laya build / browser QA / Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Require read-only private source token
+        shell: bash
+        env:
+          SOURCE_READ_TOKEN: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_READ_TOKEN" ]; then
+            echo "::error::Configure BAOZHI_SOURCE_READ_TOKEN (Contents: Read on BaiMaGod/baozhiguoyuan) in THIS public preview repo's Actions secrets."
+            exit 1
+          fi
+
+      - name: Checkout real PRIVATE game source (no credentials retained)
+        uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/baozhiguoyuan
+          ref: main
+          path: private-game
+          token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Resolve the exact source commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C private-game rev-parse HEAD)"
+          test "${#SOURCE_SHA}" -eq 40
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Building private source commit: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: private-game/game/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install game dependencies from locked manifest
+        working-directory: private-game/game
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Install official LayaAir CLI 3.4.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh             -o "$RUNNER_TEMP/install-layaair.sh"
+          bash "$RUNNER_TEMP/install-layaair.sh"
+          echo "$HOME/.layaair" >> "$GITHUB_PATH"
+          "$HOME/.layaair/layaair" install 3.4.0
+          "$HOME/.layaair/layaair" --version=3.4.0 --version
+
+      - name: Inspect game art and verify rules / TS / official Web build
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          node game/tools/audit-presentation.mjs
+          cd game
+          npm run verify:release
+
+      - name: Verify binary output is from this exact source
+        working-directory: private-game
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const base = path.resolve('game/build/web');
+          const manifest = JSON.parse(fs.readFileSync(path.join(base,'build-manifest.json'),'utf8'));
+          if (manifest.commitSha !== process.env.EXPECTED_SHA) {
+            throw Error('Blocked stale build: source SHA does not match manifest SHA');
+          }
+          if (manifest.engineVersion !== '3.4.0' || manifest.target !== 'web') {
+            throw Error('Blocked wrong Laya engine or non-Web build');
+          }
+          const required = [
+            'index.html','js/bundle.js','libs/laya.core.js',
+            'resources/polish/art/tomato_hero.webp',
+            'resources/polish/art/orchard_planter_ring.webp',
+            'resources/polish/art/orchard_stone_apron.webp',
+            'resources/polish/audio/burst_big.ogg'
+          ];
+          for (const rel of required) {
+            const file=path.join(base,rel);
+            if (!fs.statSync(file).isFile() || fs.statSync(file).size === 0) throw Error('Missing compiled output: '+rel);
+          }
+          for (const srcDir of ['src','docs','tools','node_modules','.git']) {
+            if (fs.existsSync(path.join(base,srcDir))) throw Error('Source path in public Web artifact: '+srcDir);
+          }
+          console.log('Verified official Web build and exact source SHA', manifest.commitSha);
+          NODE
+
+      - name: Install real Chromium browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'playwright==1.55.0'
+          python -m playwright install --with-deps chromium
+
+      - name: Real browser acceptance / desktop and mobile landscape
+        working-directory: private-game
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m http.server 4173 --directory game/build/web             > "$RUNNER_TEMP/bao-http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
+          python game/tests/browser-smoke.py
+
+      - name: Upload QA screenshots and reports (no private source)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baozhi-laya-3-4-real-browser-qa
+          path: private-game/game/reports/browser/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Configure GitHub Pages
+        if: success()
+        uses: actions/configure-pages@v5
+
+      - name: Upload verified compiled Web ONLY to Pages
+        if: success()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: private-game/game/build/web
+
+      - name: Publish verified Web artifact
+        if: success()
+        id: publish
+        uses: actions/deploy-pages@v4
+
+      - name: Report published source commit
+        if: success()
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          PAGE_URL: ${{ steps.publish.outputs.page_url }}
+        run: |
+          echo "Deployed real LayaAir 3.4 build from source commit $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pages URL: $PAGE_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Manifest: ${PAGE_URL%/}/build-manifest.json" >> "$GITHUB_STEP_SUMMARY"
