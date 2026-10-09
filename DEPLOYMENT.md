@@ -37,7 +37,7 @@
    - 构建产物、版本、原始素材一致性校验。
 5. 校验 `game/build/web/build-manifest.json.commitSha` 与本次真实 private checkout SHA 完全一致。
 6. 启动编译后本地 Web HTTP 服务，由真实 Chromium 执行 `game/tests/browser-smoke.py` 的桌面、手机横屏交互及手机竖屏入口验证，保存截图与测试报告。
-7. **仅所有步骤成功**，上传 `game/build/web/` 文件作为 GitHub Pages artifact 并执行 `actions/deploy-pages@v4`。浏览器截图另存为 Actions artifact（不含私有源码）。
+7. **仅所有步骤成功**，上传 `game/build/web/` 文件作为 GitHub Pages artifact 并执行 `actions/deploy-pages@v4`。浏览器截图另存为 Actions artifact（不含私有源码）；失败时也保留诊断截图。成功部署后自动读取线上 build-manifest.json 并核对源码 SHA。
 
 工作流采用 `workflow_dispatch` 手动触发；更新私有仓库不会自动触发公开仓库工作流。需要发布时重新点击 **Run workflow**。
 
@@ -50,7 +50,7 @@
 
 ## 发布后核验
 
-- 工作流页面应显示 **Real Laya build / browser QA / Pages** 全绿，并能下载
+- 工作流页面应显示 **Real Laya build / browser QA / Pages** 全绿，且部署后在线 Manifest SHA 校验通过。浏览器测试通过或失败时，如产生报告均可下载
   `baozhi-laya-3-4-real-browser-qa` 实测报告。
 - 试玩地址：<https://baimagod.github.io/baozhiguoyuan-preview/>。
 - 在浏览器打开
