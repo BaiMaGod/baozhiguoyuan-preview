@@ -5,6 +5,12 @@ name: Build BaoZhiGuoYuan with LayaAir 3.4 and publish Pages
 
 on:
   workflow_dispatch:
+  # A workflow-only edit can re-run the release through the public Runner.
+  # Normal source changes remain manually gated via workflow_dispatch.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-laya-pages.yml'
 
 permissions:
   contents: read
