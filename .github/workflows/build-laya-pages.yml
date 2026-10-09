@@ -147,12 +147,14 @@ jobs:
           python game/tests/browser-smoke.py
 
       - name: Upload QA screenshots and reports (no private source)
-        if: success()
+        # Browser smoke saves a failure screenshot/report if a real assertion
+        # fails; upload them for diagnosis, but NEVER publish a failed build.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: baozhi-laya-3-4-real-browser-qa
           path: private-game/game/reports/browser/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Configure GitHub Pages
@@ -169,6 +171,31 @@ jobs:
         if: success()
         id: publish
         uses: actions/deploy-pages@v4
+
+      - name: Confirm live Pages serves the freshly built source SHA
+        if: success()
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          PAGE_URL: ${{ steps.publish.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          URL="${PAGE_URL%/}/build-manifest.json"
+          VERIFIED=0
+          for i in {1..30}; do
+            if curl --silent --fail --location "$URL" -o "$RUNNER_TEMP/bao-live-manifest.json"; then
+              if node -e 'const fs=require("fs");const m=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(m.commitSha!==process.env.SOURCE_SHA)process.exit(2)' "$RUNNER_TEMP/bao-live-manifest.json"; then
+                VERIFIED=1
+                break
+              fi
+            fi
+            sleep 3
+          done
+          if [ "$VERIFIED" -ne 1 ]; then
+            echo "::error::Pages did not serve this release's commit SHA. Check Pages settings and cache: $URL"
+            exit 1
+          fi
+          echo "Confirmed live Pages manifest matches $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report published source commit
         if: success()
