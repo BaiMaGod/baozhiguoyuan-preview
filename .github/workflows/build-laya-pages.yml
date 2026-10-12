@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Trigger portrait-joystick input fix at private commit 99cb4c234df129cdfabbb6c4454d584493c3fbde; browser touch QA required.
+  # Verify upgrade input and feedback pools at private commit 7795430f278bc664f63de0dcff8e625bad89eab0.
   push:
     branches: [main]
     paths:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: main
+          ref: 7795430f278bc664f63de0dcff8e625bad89eab0
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
@@ -152,6 +152,8 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
           python game/tests/browser-smoke.py
+          python game/tests/browser-upgrade.py
+          python game/tests/browser-performance.py --url http://127.0.0.1:4173/ --output game/reports/performance --optimized
 
       - name: Upload QA screenshots and reports (no private source)
         # Browser smoke saves a failure screenshot/report if a real assertion
@@ -160,7 +162,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: baozhi-laya-3-4-real-browser-qa
-          path: private-game/game/reports/browser/
+          path: |
+            private-game/game/reports/browser/
+            private-game/game/reports/upgrade/
+            private-game/game/reports/performance/
           if-no-files-found: warn
           retention-days: 7
 
