@@ -1,0 +1,53 @@
+name: Verify published orchard gameplay
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build BaoZhiGuoYuan with LayaAir 3.4 and publish Pages"]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify-live:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read the published build identity
+        id: live
+        env:
+          GAME_URL: https://baimagod.github.io/baozhiguoyuan-preview/
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "${GAME_URL}build-manifest.json" -o "$RUNNER_TEMP/live-manifest.json"
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path');
+          const m=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'live-manifest.json'),'utf8'));
+          if(!/^[0-9a-f]{40}$/.test(m.commitSha)||m.engineVersion!=='3.4.0'||m.target!=='web')throw Error('Invalid live build identity');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'sha='+m.commitSha+'\n');
+          JS
+      - uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/baozhiguoyuan
+          ref: ${{ steps.live.outputs.sha }}
+          path: source
+          token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install official browser test dependencies
+        run: |
+          python -m pip install 'playwright==1.55.0'
+          python -m playwright install --with-deps chromium
+      - name: Play the published game through real input
+        run: |
+          python source/game/tests/browser-upgrade.py --url https://baimagod.github.io/baozhiguoyuan-preview/ --output live-qa
+      - name: Upload only published-page QA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchard-published-gameplay
+          path: live-qa/
+          if-no-files-found: warn
+          retention-days: 7
