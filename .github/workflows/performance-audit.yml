@@ -1,0 +1,114 @@
+name: Orchard rendering performance audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/performance-audit.yml']
+permissions:
+  contents: read
+concurrency:
+  group: orchard-performance-audit
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout pinned baseline source
+        uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/baozhiguoyuan
+          ref: f70f4284d9e9d5fb852280210241d9c704bc5865
+          path: baseline
+          token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - name: Checkout pinned performance changes
+        uses: actions/checkout@v4
+        with:
+          repository: BaiMaGod/baozhiguoyuan
+          ref: 2a79632f19352ac866e91c022016b264d9d4d5c4
+          path: candidate
+          token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install official compiler and Chromium
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://raw.githubusercontent.com/layabox/layaair-cli/master/install.sh -o "$RUNNER_TEMP/install-layaair.sh"
+          bash "$RUNNER_TEMP/install-layaair.sh"
+          echo "$HOME/.layaair" >> "$GITHUB_PATH"
+          "$HOME/.layaair/layaair" install 3.4.0
+          python -m pip install 'playwright==1.55.0'
+          python -m playwright install --with-deps chromium
+      - name: Build and verify both actual LayaAir versions
+        run: |
+          set -euo pipefail
+          for PROJECT in baseline candidate; do
+            (cd "$PROJECT/game" && npm ci --no-audit --no-fund && npm run verify:release)
+          done
+      - name: Real input and separate renderer stress comparison
+        run: |
+          set -euo pipefail
+          python -m http.server 4173 --directory baseline/game/build/web > "$RUNNER_TEMP/baseline-http.log" 2>&1 &
+          BASE_PID=$!
+          python -m http.server 4174 --directory candidate/game/build/web > "$RUNNER_TEMP/candidate-http.log" 2>&1 &
+          NEW_PID=$!
+          trap 'kill "$BASE_PID" "$NEW_PID" || true' EXIT
+          for PORT in 4173 4174; do
+            for i in {1..40}; do
+              if curl --silent --fail "http://127.0.0.1:$PORT/index.html" >/dev/null; then break; fi
+              sleep 0.5
+            done
+          done
+          python candidate/game/tests/browser-performance.py --url http://127.0.0.1:4173/ --output performance-reports/baseline
+          python candidate/game/tests/browser-performance.py --url http://127.0.0.1:4174/ --output performance-reports/candidate --optimized
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('performance-reports')
+          old=json.loads((root/'baseline/report.json').read_text())
+          new=json.loads((root/'candidate/report.json').read_text())
+          out={'baselineSha':'f70f4284d9e9d5fb852280210241d9c704bc5865','candidateSha':'2a79632f19352ac866e91c022016b264d9d4d5c4','profiles':{}}
+          for profile in ['desktop','mobile']:
+              a=old[profile]['rendererStress']['updateCost']['medianMs']
+              b=new[profile]['rendererStress']['updateCost']['medianMs']
+              out['profiles'][profile]={'baselineUpdateMedianMs':a,'candidateUpdateMedianMs':b,'updateReductionPercent':(1-b/a)*100 if a else None,'baselineRealFrameP95Ms':old[profile]['realPlay']['frameIntervals']['p95Ms'],'candidateRealFrameP95Ms':new[profile]['realPlay']['frameIntervals']['p95Ms']}
+          (root/'comparison.json').write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          PY
+      - name: Full actual gameplay regression on candidate
+        run: |
+          set -euo pipefail
+          python -m http.server 4173 --directory candidate/game/build/web > "$RUNNER_TEMP/smoke-http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          sleep 1
+          python candidate/game/tests/browser-smoke.py
+      - name: Record tested official output hashes
+        if: always()
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          out=Path('performance-reports');out.mkdir(exist_ok=True)
+          result={}
+          for label in ['baseline','candidate']:
+              root=Path(label)/'game/build/web'
+              result[label]={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+          (out/'build-hashes.json').write_text(json.dumps(result,indent=2))
+          PY
+      - name: Upload measurements and screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchard-performance-audit
+          path: |
+            performance-reports/
+            candidate/game/reports/browser/
+          if-no-files-found: error
+          retention-days: 7
