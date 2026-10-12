@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Verify upgrade input and feedback pools at private commit 7795430f278bc664f63de0dcff8e625bad89eab0.
+  # Verify complete 69-upgrade / 24-core build and real input at private commit 8c89207b7cc4006a445f4fae5dace90aa8bfdf4e.
   push:
     branches: [main]
     paths:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: 7795430f278bc664f63de0dcff8e625bad89eab0
+          ref: 8c89207b7cc4006a445f4fae5dace90aa8bfdf4e
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
@@ -153,6 +153,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
           python game/tests/browser-smoke.py
           python game/tests/browser-upgrade.py
+          python game/tests/browser-full-build.py
           python game/tests/browser-performance.py --url http://127.0.0.1:4173/ --output game/reports/performance --optimized
 
       - name: Upload QA screenshots and reports (no private source)
@@ -165,6 +166,7 @@ jobs:
           path: |
             private-game/game/reports/browser/
             private-game/game/reports/upgrade/
+            private-game/game/reports/full-build/
             private-game/game/reports/performance/
           if-no-files-found: warn
           retention-days: 7
