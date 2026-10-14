@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Verify the 38-active-upgrade / 23-reachable-core build and real input at private commit 4f658a6d938e8a034e236b7acf73f7d7b6e3791e.
+  # Verify the 38-active-upgrade / 23-reachable-core build and real input at private commit 00fd181ca6483d64bce8d62c76fa5d47fb5d8245.
   push:
     branches: [main]
     paths:
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: 4f658a6d938e8a034e236b7acf73f7d7b6e3791e
+          ref: 00fd181ca6483d64bce8d62c76fa5d47fb5d8245
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
