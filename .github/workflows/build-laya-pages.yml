@@ -8,6 +8,7 @@ on:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
   # Verify V1.3 home, progression and real input at private commit 079d3e6bc19e95853d1444bb2f21b7995f7ae541.
+  # Deploy request: V1.3 homepage + permanent upgrades, 2026-10-14; rerun on the pinned source.
   push:
     branches: [main]
     paths:
