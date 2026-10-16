@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Verify V1.3 home, progression and real input at private commit 079d3e6bc19e95853d1444bb2f21b7995f7ae541.
-  # Deploy request: V1.3 homepage + permanent upgrades, 2026-10-14; rerun on the pinned source.
+  # Verify the newest small-swarm source with full rules, browser interaction and performance gates.
+  # Deploy request: staged small-monster waves, 2026-10-16; fail closed unless every gate passes.
   push:
     branches: [main]
     paths:
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: 079d3e6bc19e95853d1444bb2f21b7995f7ae541
+          ref: 62eb352cf6e945450cede4efddcd00425a7b0920
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
