@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
   # A workflow-only edit can re-run the release through the public Runner.
   # Normal source changes remain manually gated via workflow_dispatch.
-  # Verify the newest small-swarm source with full rules, browser interaction and performance gates.
-  # Deploy request: staged small-monster waves, 2026-10-16; fail closed unless every gate passes.
+  # Verify the latest neon-juice 2D art source with full rules, browser interaction and performance gates.
+  # Deploy request: first neon-juice 2D art implementation, 2026-10-24; fail closed unless every gate passes.
   push:
     branches: [main]
     paths:
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: 62eb352cf6e945450cede4efddcd00425a7b0920
+          ref: d0d24f313404fb5b67341fd27daa65a5ae231a93
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
