@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BaiMaGod/baozhiguoyuan
-          ref: a8fb90e7e75468d515ac7a1b56de07a792c589fa
+          ref: 2ac77039e0f9edb3b75b24140397fd07705f1a12
           path: private-game
           token: ${{ secrets.BAOZHI_SOURCE_READ_TOKEN }}
           persist-credentials: false
